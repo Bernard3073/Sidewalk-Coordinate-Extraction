@@ -54,9 +54,22 @@ def color_tensor_element(B_x, B_y, G_x, G_y, R_x, R_y, x_dir, y_dir):
         
     elif x_dir == True and y_dir == True:
         res = np.multiply(B_x, B_y) + np.multiply(G_x, G_y) + np.multiply(R_x, R_y)
-
-    res = cv2.GaussianBlur(res, (5, 5), 0)  
+ 
     return res
+
+# def color_tensor_element(grad_x, grad_y, x_dir, y_dir):
+#     res = None
+#     if x_dir == True and y_dir == False:
+#         res = np.multiply(grad_x, grad_x)
+        
+
+#     elif x_dir == False and y_dir == True:
+#         res = np.multiply(grad_y, grad_y)
+        
+#     elif x_dir == True and y_dir == True:
+#         res = np.multiply(grad_x, grad_y)
+ 
+#     return res
 
 def main():
     # file_dir = "/home/bernard/Akrobotix/code/picture/"
@@ -65,7 +78,7 @@ def main():
     test_pic = cv2.imread("/home/bernard/Akrobotix/code/picture/0.png")
     
     # gray = cv2.cvtColor(test_pic, cv2.COLOR_BGR2GRAY)
-    # res = cv2.Gaussianres(gray, (5, 5), 0)
+    blur = cv2.GaussianBlur(test_pic, (5, 5), 0)
     # grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
     # grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
     
@@ -74,16 +87,41 @@ def main():
     # canny = cv2.Canny(test_pic, 10, 100)
     # cv2.imshow('test', canny)
 
-    B, G, R = cv2.split(test_pic.astype("float"))
+    B, G, R = cv2.split(blur.astype("float"))
+
     B_x, B_y = image_grad(B)
     G_x, G_y = image_grad(G)
     R_x, R_y = image_grad(R)
+    
     tensor_xx = color_tensor_element(B_x, B_y, G_x, G_y, R_y, R_y, True, False)
-    tensor_yy = color_tensor_element(B_x, B_y, G_x, G_y, R_y, R_y, False, False)
-    tensor_xy = color_tensor_element(B_x, B_y, G_x, G_y, R_y, R_y, False, True)
-
+    tensor_yy = color_tensor_element(B_x, B_y, G_x, G_y, R_y, R_y, False, True)
+    tensor_xy = color_tensor_element(B_x, B_y, G_x, G_y, R_y, R_y, True, True)
     edge_strength = 0.5*(tensor_xx + tensor_yy + np.sqrt(np.square(tensor_xx - tensor_yy) + 4*np.square(tensor_xy)))
-    cv2.imshow('e', edge_strength)
+
+    edge_strength = np.uint(255*abs(edge_strength)) / np.max(abs(edge_strength))
+    img_binary = np.zeros_like(edge_strength)
+    # setting threshold
+    img_binary[(edge_strength >= 80) & 
+            (edge_strength <= 255)] = 1
+    cv2.imshow('t', img_binary)
+    # edge_strength = ((edge_strength - edge_strength.min()) / (edge_strength.max() - edge_strength.min())) * 255
+    
+    # B_xx = color_tensor_element(B_x, B_y, True, False)
+    # G_xx = color_tensor_element(G_x, G_y, True, False)
+    # G_xx = color_tensor_element(R_x, R_y, True, False)
+    
+    # B_yy = color_tensor_element(B_x, B_y, False, True)
+    # G_yy = color_tensor_element(G_x, G_y, False, True)
+    # G_yy = color_tensor_element(R_x, R_y, False, True)
+    
+    # B_xy = color_tensor_element(B_x, B_y, True, True)
+    # G_xy = color_tensor_element(G_x, G_y, True, True)
+    # G_xy = color_tensor_element(R_x, R_y, True, True)
+    
+    # edge_strength = 0.5*(B_xx + B_yy + np.sqrt(np.square(B_xx - B_yy) + 4*np.square(B_xy)))
+    # edge_strength = ((edge_strength - edge_strength.min()) / (edge_strength.max() - edge_strength.min())) * 255
+
+    # edge_strength.astype(np.uint8)
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
