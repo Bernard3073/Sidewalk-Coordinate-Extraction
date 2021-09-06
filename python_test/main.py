@@ -7,8 +7,22 @@ import cv2
 import numpy as np
 import scipy.ndimage
 import math
-# def convolution(img, kernel):
-#     img_row, img_col = img.shape
+
+global width, height
+# diagonal length of img
+global L
+# spacing of a ray (used to calculate neighbor pixel)
+phi = np.pi/12
+# the threshold for L needed for N_r 
+tau_e = 0.01
+# threshold on the orientation similarity between p and l_vp
+tau_p = 1 # np.pi # np.pi / 36
+# angle of a ray
+theta_r = 200*np.pi/180
+# number of rays 
+num_ray = 29
+# angle to the next ray
+ray_angle_diff = 5*np.pi/180
 
 
 def image_grad(img):
@@ -60,11 +74,12 @@ def color_tensor_element(Blue_x, Blue_y, Green_x, Green_y, Red_x, Red_y, x_dir, 
  
     return res
 
-def cal_vanishing_point(coordinates, local_orientation, width, height):
-    # diagonal length of img
-    L = math.sqrt(height**2 + width**2)
-    # threshold on the orientation similarity between p and l_vp
-    tau_p = 1 # np.pi # np.pi / 36
+def calc_vanishing_point(coordinates, local_orientation):
+    """
+    Calculation for the vanishing point
+    """
+    global width, height, L
+    
     vp_score_max = 0
     from tqdm import tqdm
     for y_ind in tqdm(range(height)):
@@ -90,24 +105,68 @@ def cal_vanishing_point(coordinates, local_orientation, width, height):
     return vanishing_point
 
 
+def calc_d_o(img, local_orientation, vanishing_point, ray_list):
+    """
+    Calculation for d_o (orientation difference) 
+    """
+    global L
+    # list of neighboring pixels of each ray 
+    N_r_list = []
+    R_list = []
+    norm = np.linalg.norm
+    vanishing_point = np.asarray(vanishing_point)
+    ray_angle = theta_r
+    for i in range(len(ray_list)):
+        R_plus = []
+        R_minus = []
+        N_r = []
+        for y in range(vanishing_point[1], height):
+            for x in range(width):
+                # p = np.asarray([x, y])
+                # dist = abs(np.cross(ray_list[i] - vanishing_point, p - vanishing_point) / norm(ray_list[i] - vanishing_point))
+                # if dist <= L*tau_e:
+                #     N_r.append((x, y))
+                vector_1 = (x, y) - vanishing_point
+                vector_2 = ray_list[i] - vanishing_point
+                # angle = np.arccos(np.dot(vector_1 / np.linalg.norm(vector_1), vector_2 / np.linalg.norm(vector_2)))
+                angle = np.arctan2(vector_1[1], vector_1[0]) - np.arctan2(vector_2[1], vector_2[0])
+                if -phi <= angle < 0:
+                    R_minus.append([x, y])
+                    N_r.append([x, y])
+                elif 0 < angle <= ray_angle + phi:
+                    R_plus.append([x, y])
+                    N_r.append([x, y])
+        R_list.append([R_plus, R_minus])
+        N_r_list.append(N_r)
+
+    ray_angle = theta_r
+    d_o_list = []
+    for i in range(len(N_r_list)):
+        d_o = 0
+        for j in range(len(N_r_list[i])):
+            x = N_r_list[i][j][0]
+            y = N_r_list[i][j][1]
+            d_o += abs(ray_angle - local_orientation[y, x])
+        ray_angle += ray_angle_diff
+        d_o_list.append(d_o)
+
+    return R_list, N_r_list, d_o_list
+
 def main():
+    global width, height, L
     # file_dir = "/home/bernard/Akrobotix/code/picture/"
     # data = [i for i in os.listdir(file_dir) if i.endswith('_pred.png')]
     # print(len(data))
     # test_pic = cv2.imread("/home/bernard/Akrobotix/code/picture/0.png")
-    # frame = cv2.imread("/home/bernard/Akrobotix/code/0.png")
-    frame = cv2.imread("0.png")
+    # img = cv2.imread("/home/bernard/Akrobotix/code/0.png")
+    img = cv2.imread("0.png")
     scale_percent = 30  # percent of original size
-    width = int(frame.shape[1] * scale_percent / 100)
-    height = int(frame.shape[0] * scale_percent / 100)
-    frame = cv2.resize(frame, (width, height), interpolation = cv2.INTER_AREA)
+    width = int(img.shape[1] * scale_percent / 100)
+    height = int(img.shape[0] * scale_percent / 100)
+    L = math.sqrt(height**2 + width**2)
+    img = cv2.resize(img, (width, height), interpolation = cv2.INTER_AREA)
 
-    # B, G, R = cv2.split(test_pic.astype("float"))
-    # Blue_x, Blue_y = image_grad(B)
-    # canny = cv2.Canny(test_pic, 50, 100)
-    # cv2.imshow('test', canny)
-
-    Blue, Green, Red = cv2.split(frame.astype("float"))
+    Blue, Green, Red = cv2.split(img.astype("float"))
 
     Blue_x, Blue_y = image_grad(Blue)
     Green_x, Green_y = image_grad(Green)
@@ -119,24 +178,8 @@ def main():
     local_orientation = 0.5*np.arctan2(2*G_xy, G_xx - G_yy) + (np.pi / 2)
     edge_strength = 0.5*(G_xx + G_yy + np.sqrt(np.square(G_xx - G_yy) + 4*np.square(G_xy)))
 
-    # edge_strength = ((edge_strength - edge_strength.min()) / (edge_strength.max() - edge_strength.min()))*255
-    # edge_strength = np.uint(edge_strength)
-
     edge_strength = np.uint(255*abs(edge_strength)) / np.max(abs(edge_strength))
 
-    # img_binary = np.zeros_like(edge_strength)
-    # setting threshold
-    # img_binary[(edge_strength >= 30) & 
-    #         (edge_strength <= 255)] = 1
-    # cv2.imshow('t', img_binary)
-    # Blue = np.uint8(Blue)
-    # Green = np.uint8(Green)
-    # Red = np.uint8(Red)
-    # Blue_cny = cv2.Canny(Blue, 30, 200)
-    # Green_cny = cv2.Canny(Green, 30, 200)
-    # Red_cny = cv2.Canny(Red, 30, 200)
-    # img_cny = cv2.merge([Blue_cny, Green_cny, Red_cny])
-    # cv2.imshow('c', img_cny)
     edge_strength = np.uint8(edge_strength)
     edges = cv2.Canny(edge_strength, 30, 200)
     # cv2.imshow('e_s', edge_strength)
@@ -146,16 +189,14 @@ def main():
     indices = np.nonzero(edges)
     coordinates = list(zip(indices[1], indices[0]))
     
-    # vanishing_point = cal_vanishing_point(coordinates, local_orientation, width, height)
+    # vanishing_point = calc_vanishing_point(coordinates, local_orientation, width, height)
     # print('---'*10)
     # print(vanishing_point)
     # print('---'*10)
     vanishing_point = (152, 40)
-    image = cv2.circle(frame, vanishing_point, radius=0, color=(0, 0, 255), thickness=10)
-    # image = cv2.line(frame, (0, vanishing_point[1]), (width-1, vanishing_point[1]), color=(255, 0, 0), thickness=3)
+    image = cv2.circle(img, vanishing_point, radius=0, color=(0, 0, 255), thickness=10)
+    # image = cv2.line(img, (0, vanishing_point[1]), (width-1, vanishing_point[1]), color=(255, 0, 0), thickness=3)
     
-    # number of rays 
-    num_ray = 29
     j = 0
     ray_list = np.empty([num_ray, 2])
     for i in range(200, 341, 5):
@@ -163,36 +204,33 @@ def main():
         y = int(vanishing_point[1] - 200*math.sin(i*np.pi/180))
         ray_list[j] = [x, y]
         j += 1
-        image = cv2.line(frame, (vanishing_point[0], vanishing_point[1]), (x, y), color=(0,255,0), thickness=1)
-    # spacing of a ray (used to calculate neighbor pixel)
-    phi = np.pi/12
-    N_r_list = []
-    L = math.sqrt(height**2 + width**2)
-    tau_e = 0.01
-    norm = np.linalg.norm
-    vanishing_point = np.asarray(vanishing_point)
-    for i in range(1, len(ray_list)):
-        N_r = []
-        for y in range(vanishing_point[1], height):
-            for x in range(width):
-                p = np.asarray([x, y])
-                dist = abs(np.cross(ray_list[i] - vanishing_point, p - vanishing_point) / norm(ray_list[i] - vanishing_point))
-                if dist <= L*tau_e:
-                    N_r.append((x, y))
-        N_r_list.append(np.asarray(N_r))
+        image = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (x, y), color=(0,255,0), thickness=1)
+    
+    R_list, N_r_list, d_o_list = calc_d_o(img, local_orientation, vanishing_point, ray_list)
 
-    d0_list = []
-    # angle of a ray
-    theta_r = 240*np.pi/180
-    for i in range(len(N_r_list)):
-        d0 = 0
-        for j in range(len(N_r_list[i])):
-            x = N_r_list[i][j][0]
-            y = N_r_list[i][j][1]
-            if(y < 0 or y > height or x < 0 or x > width):
-                continue
-            d0 += abs(theta_r - local_orientation[y, x])
-        d0_list.append(d0)
+    """
+    Calculation for d_c (color difference)
+    """
+    color_seg_img = cv2.imread("0_pred.png")
+    color_seg_img = cv2.resize(color_seg_img, (width, height), interpolation = cv2.INTER_AREA)
+    # avg_color_per_row = np.average(color_seg_img, axis=0)
+    # avg_color = np.average(avg_color_per_row, axis=0)
+    d_c_list = []
+    for i in range(len(R_list)):
+        d_c = []
+        c_plus = 0
+        c_minus = 0
+        for j in range(len(R_list[i])):
+            plus_x = R_list[i][0][0]
+            plus_y = R_list[i][0][1]
+            minus_x = R_list[i][1][0]
+            minus_y = R_list[i][1][1]
+            c_plus += color_seg_img[plus_y, plus_x]
+            c_minus += color_seg_img[minus_y, minus_x]
+        c_plus /= len(R_list[i][0])    
+        c_minus /= len(R_list[i][1])
+        d_c.append([c_plus, c_minus])    
+        d_c_list.append(d_c)
     print("done")
     # cv2.waitKey(0)
     cv2.imshow('img', image)
