@@ -152,6 +152,30 @@ def calc_d_o(img, local_orientation, vanishing_point, ray_list):
 
     return R_list, N_r_list, d_o_list
 
+def calc_d_c(R_list):
+    """
+    Calculation for d_c (color difference)
+    """
+    color_seg_img = cv2.imread("0_pred.png")
+    color_seg_img = cv2.resize(color_seg_img, (width, height), interpolation = cv2.INTER_AREA)
+    d_c_list = []
+    for i in range(len(R_list)):
+        d_c = []
+        for j in range(len(R_list[i])):
+            c_plus = np.zeros(3)
+            for k in R_list[i][0]:
+                c_plus += color_seg_img[k[1], k[0]]
+            c_minus = np.zeros(3)
+            for k in R_list[i][1]:
+                c_minus += color_seg_img[k[1], k[0]]
+        c_plus /= len(R_list[i][0])    
+        c_minus /= len(R_list[i][1])
+        # d_c.append([c_plus, c_minus])  
+        d_c = np.sqrt((c_plus[0] - c_minus[0])**2 + (c_plus[1] - c_minus[1])**2 + (c_plus[2] - c_minus[2])**2) / max(np.sqrt(np.sum(np.square(c_plus))), np.sqrt(np.sum(np.square(c_minus))))
+        d_c_list.append(d_c)
+    
+    return d_c_list
+
 def main():
     global width, height, L
     # file_dir = "/home/bernard/Akrobotix/code/picture/"
@@ -208,29 +232,7 @@ def main():
     
     R_list, N_r_list, d_o_list = calc_d_o(img, local_orientation, vanishing_point, ray_list)
 
-    """
-    Calculation for d_c (color difference)
-    """
-    color_seg_img = cv2.imread("0_pred.png")
-    color_seg_img = cv2.resize(color_seg_img, (width, height), interpolation = cv2.INTER_AREA)
-    # avg_color_per_row = np.average(color_seg_img, axis=0)
-    # avg_color = np.average(avg_color_per_row, axis=0)
-    d_c_list = []
-    for i in range(len(R_list)):
-        d_c = []
-        c_plus = 0
-        c_minus = 0
-        for j in range(len(R_list[i])):
-            plus_x = R_list[i][0][0]
-            plus_y = R_list[i][0][1]
-            minus_x = R_list[i][1][0]
-            minus_y = R_list[i][1][1]
-            c_plus += color_seg_img[plus_y, plus_x]
-            c_minus += color_seg_img[minus_y, minus_x]
-        c_plus /= len(R_list[i][0])    
-        c_minus /= len(R_list[i][1])
-        d_c.append([c_plus, c_minus])    
-        d_c_list.append(d_c)
+    d_c_list = calc_d_c(R_list)
     print("done")
     # cv2.waitKey(0)
     cv2.imshow('img', image)
