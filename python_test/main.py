@@ -7,7 +7,8 @@ import cv2
 import numpy as np
 import scipy.ndimage
 import math
-
+import copy
+from matplotlib import pyplot as plt
 global width, height
 # diagonal length of img
 global L
@@ -23,7 +24,8 @@ theta_r = 200*np.pi/180
 num_ray = 29
 # angle to the next ray
 ray_angle_diff = 5*np.pi/180
-
+# number of bins in the color histogram
+bins = 16
 
 def image_grad(img):
     # res = cv2.GaussianBlur(img, (5, 5), 0)
@@ -163,11 +165,11 @@ def calc_d_c(R_list):
         d_c = []
         for j in range(len(R_list[i])):
             c_plus = np.zeros(3)
-            for k in R_list[i][0]:
-                c_plus += color_seg_img[k[1], k[0]]
             c_minus = np.zeros(3)
-            for k in R_list[i][1]:
-                c_minus += color_seg_img[k[1], k[0]]
+            for plus, minus in zip(R_list[i][0], R_list[i][1]):
+                c_plus += color_seg_img[plus[1], plus[0]]
+                c_minus += color_seg_img[minus[1], minus[0]]
+                
         c_plus /= len(R_list[i][0])    
         c_minus /= len(R_list[i][1])
         # d_c.append([c_plus, c_minus])  
@@ -175,6 +177,56 @@ def calc_d_c(R_list):
         d_c_list.append(d_c)
     
     return d_c_list
+
+def calc_u_ij(vanishing_point, ray_i, ray_j):
+    '''
+    Calculate color uniformity between ray "i" and ray "j" 
+    '''
+    ray_i = np.short(ray_i)
+    ray_j = np.short(ray_j)
+    left_x = [vanishing_point[0], ray_i[0]]
+    left_y = [vanishing_point[1], ray_i[1]]
+    right_x = [vanishing_point[0], ray_j[0]]
+    right_y = [vanishing_point[1], ray_j[1]]
+    left_fit = np.polyfit(left_x, left_y, 1)
+    right_fit = np.polyfit(right_x, right_y, 1)
+
+    ray_area_x_min = min(min(left_x), min(right_x))
+    ray_area_x_max = max(max(left_x), max(right_x))
+    plot_x = np.linspace(ray_area_x_min, ray_area_x_max, ray_area_x_max - ray_area_x_min)
+    
+    left_fit_y = left_fit[0]*plot_x + left_fit[1]
+    right_fit_y = right_fit[0]*plot_x + right_fit[1]
+    left_pts = np.array([(np.vstack([plot_x, left_fit_y])).T])
+    right_pts = np.array([np.flipud((np.vstack([plot_x, right_fit_y])).T)])
+
+    left_pts = np.array(left_pts, dtype='int32')
+    right_pts = np.array(right_pts, dtype='int32')
+    pts = np.hstack((left_pts, right_pts))
+    # # Display ray area
+    # cv2.fillPoly(img, pts, (0, 255, 0))
+    # cv2.polylines(img, left_pts, isClosed=False, color=(255, 0, 0))
+    # cv2.polylines(img, right_pts, isClosed=False, color=(255, 0, 0))
+    color_seg_img = cv2.imread("0_pred.png")
+    color_seg_img = cv2.resize(color_seg_img, (width, height), interpolation = cv2.INTER_AREA)
+    color_seg_img_copy = copy.deepcopy(color_seg_img)
+    mask = np.zeros(color_seg_img_copy.shape[:2], dtype="uint8")
+    mask = cv2.fillPoly(mask, pts, 1) # 255
+    masked = cv2.bitwise_and(color_seg_img_copy, color_seg_img_copy, mask=mask)
+    # cv2.imshow('mask', masked)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    chans = cv2.split(color_seg_img)
+    colors = ("b", "g", "r")
+    uniformity = 0
+    for i, col in enumerate(colors):
+        hist = cv2.calcHist([color_seg_img_copy], [i], mask, [bins], [0, 256])
+        hist /= hist.sum()
+        uniformity += np.sum(hist**2)
+        # plt.plot(hist, color=col)
+        # plt.xlim([0,256])
+    # plt.show()
+    return uniformity
 
 def main():
     global width, height, L
@@ -226,16 +278,37 @@ def main():
     for i in range(200, 341, 5):
         x = int(vanishing_point[0] + 200*math.cos(i*np.pi/180))
         y = int(vanishing_point[1] - 200*math.sin(i*np.pi/180))
+        if x < 0: 
+            x = 0
+        elif x > width: 
+            x = width
+        elif y > height: 
+            y = height
+
         ray_list[j] = [x, y]
         j += 1
-        image = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (x, y), color=(0,255,0), thickness=1)
+        # image = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (x, y), color=(0,255,0), thickness=1)
     
-    R_list, N_r_list, d_o_list = calc_d_o(img, local_orientation, vanishing_point, ray_list)
+    # R_list, N_r_list, d_o_list = calc_d_o(img, local_orientation, vanishing_point, ray_list)
 
-    d_c_list = calc_d_c(R_list)
+    # d_c_list = calc_d_c(R_list)
+
+    color_uniformity = dict()
+
+    for i in range(len(ray_list)-1):
+        # color_uniformity[i] = list()
+        color_uniformity[i] = 0
+        u_max = 0
+        for j in range(i+1, len(ray_list)):
+            uniformity = calc_u_ij(vanishing_point, ray_list[i], ray_list[j])
+            color_uniformity[i].append(uniformity)
+            # if uniformity > u_max:
+            #     color_uniformity[i] = (j, uniformity)
+
+
     print("done")
     # cv2.waitKey(0)
-    cv2.imshow('img', image)
+    cv2.imshow('img', img)
     # cv2.imwrite('vanishing_point.jpg', image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
