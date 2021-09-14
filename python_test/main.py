@@ -27,6 +27,14 @@ ray_angle_diff = 5*np.pi/180
 # number of bins in the color histogram
 bins = 16
 
+a = 0.9
+b = 2.3
+alpha = 0.9
+beta = 2.3
+sigma = 0.3437
+phi_avg = 1.597
+
+
 def image_grad(img):
     # res = cv2.GaussianBlur(img, (5, 5), 0)
     # grad_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
@@ -150,7 +158,7 @@ def calc_d_o(img, local_orientation, vanishing_point, ray_list):
             y = N_r_list[i][j][1]
             d_o += abs(ray_angle - local_orientation[y, x])
         ray_angle += ray_angle_diff
-        d_o_list.append(d_o)
+        d_o_list.append(d_o/len(N_r_list[i]))
 
     return R_list, N_r_list, d_o_list
 
@@ -228,6 +236,17 @@ def calc_u_ij(vanishing_point, ray_i, ray_j):
     # plt.show()
     return uniformity
 
+def lane_score(i, j, d_o_list, d_c_list, uniformity, phi_list):
+    angle = abs(phi_list[i]-phi_list[j])
+    f1_i = np.exp(-d_o_list[i]/np.pi)
+    f1_j = np.exp(-d_o_list[j]/np.pi)
+    f2_i = 1/(1+a*np.exp(-b*d_c_list[i]))
+    f2_j = 1/(1+a*np.exp(-b*d_c_list[j])) 
+    f3 = 1/(1+alpha*np.exp(-beta*uniformity))
+    f4 = 1/(sigma*math.sqrt(2*math.pi)) * math.exp(-(angle-phi_avg)**2/(2*(sigma)**2))
+    score = f1_i*f1_j*f2_i*f2_j*f3*f4
+    return score
+
 def main():
     global width, height, L
     # file_dir = "/home/bernard/Akrobotix/code/picture/"
@@ -275,7 +294,9 @@ def main():
     
     j = 0
     ray_list = np.empty([num_ray, 2])
+    phi_list = list()
     for i in range(200, 341, 5):
+        phi_list.append(i*np.pi/180)
         x = int(vanishing_point[0] + 200*math.cos(i*np.pi/180))
         y = int(vanishing_point[1] - 200*math.sin(i*np.pi/180))
         if x < 0: 
@@ -289,25 +310,31 @@ def main():
         j += 1
         # image = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (x, y), color=(0,255,0), thickness=1)
     
-    # R_list, N_r_list, d_o_list = calc_d_o(img, local_orientation, vanishing_point, ray_list)
+    R_list, N_r_list, d_o_list = calc_d_o(img, local_orientation, vanishing_point, ray_list)
 
-    # d_c_list = calc_d_c(R_list)
+    d_c_list = calc_d_c(R_list)
 
-    color_uniformity = dict()
-
+    # color_uniformity = dict()
+    score_dict = dict()
     for i in range(len(ray_list)-1):
         # color_uniformity[i] = list()
-        color_uniformity[i] = 0
+        score_dict[i] = (0,0)
         u_max = 0
         for j in range(i+1, len(ray_list)):
             uniformity = calc_u_ij(vanishing_point, ray_list[i], ray_list[j])
-            color_uniformity[i].append(uniformity)
-            # if uniformity > u_max:
-            #     color_uniformity[i] = (j, uniformity)
-
-
+            # color_uniformity[i].append(uniformity)
+            score = lane_score(i, j, d_o_list, d_c_list, uniformity, phi_list)
+            if score > score_dict[i][1]:
+                score_dict[i] = (j, score)
+    val = 0
+    for key in score_dict:
+        if score_dict[key][1] > val:
+            val = score_dict[key][1]
+            ans = (key, score_dict[key][0])
+    print(ans)
     print("done")
-    # cv2.waitKey(0)
+    img = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (int(ray_list[ans[0]][0]), int(ray_list[ans[0]][1])), color=(0,255,0), thickness=1)
+    img = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (int(ray_list[ans[1]][0]), int(ray_list[ans[1]][1])), color=(0,255,0), thickness=1)
     cv2.imshow('img', img)
     # cv2.imwrite('vanishing_point.jpg', image)
     cv2.waitKey(0)
