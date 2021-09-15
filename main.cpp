@@ -15,6 +15,7 @@ void image_grad(cv::Mat img, cv::Mat &img_x, cv::Mat &img_y){
   cv::Mat sobelx = cv::Mat(3, 3, CV_32F, sobelx_data);
   cv::Mat sobely = cv::Mat(3, 3, CV_32F, sobely_data);
 
+  cv::GaussianBlur(img, img, cv::Size(5, 5), 0);
   filter2D(img, img_x, -1, sobelx);
   filter2D(img, img_y, -1, sobely);
 
@@ -188,16 +189,16 @@ int main( int argc, char** argv ) {
   // }
   // edge_strength = np.uint(255*abs(edge_strength)) / np.max(abs(edge_strength))
   // img_binary = np.zeros_like(edge_strength)
-  // # setting threshold
-  // img_binary[(edge_strength >= 30) & 
-  //         (edge_strength <= 255)] = 1
   double minVal, maxVal;
   minMaxLoc(edge_strength, &minVal, &maxVal);
   cv::Mat res;
   // normalize(edge_strength, res, minVal, maxVal, NORM_MINMAX);
   edge_strength = 255*edge_strength / maxVal;
-  imshow("e", edge_strength);
-
+  // imshow("e", edge_strength);
+  edge_strength.convertTo(edge_strength, CV_8U);
+  cv::Mat canny;
+  cv::Canny(edge_strength, canny, 30, 200);
+  imshow("c", canny);
   cv::waitKey(0);
   cv::destroyAllWindows();
   return 0;
