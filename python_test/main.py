@@ -8,7 +8,7 @@ import numpy as np
 import scipy.ndimage
 import math
 import copy
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 global width, height
 # diagonal length of img
 global L
@@ -17,7 +17,7 @@ phi = np.pi/12
 # the threshold for L needed for N_r 
 tau_e = 0.01
 # threshold on the orientation similarity between p and l_vp
-tau_p = 1 # np.pi # np.pi / 36
+tau_o = np.pi/12 # np.pi / 36
 # angle of a ray
 theta_r = 200*np.pi/180
 # number of rays 
@@ -36,36 +36,20 @@ phi_avg = 1.597
 
 
 def image_grad(img):
-    # res = cv2.GaussianBlur(img, (5, 5), 0)
-    # grad_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
-    # grad_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
-
-    # scaled_sobel_x = np.uint(255*abs(grad_x)) / np.max(abs(grad_x))
-    # scaled_sobel_y = np.uint(255*abs(grad_y)) / np.max(abs(grad_y))
-    # sx_binary = np.zeros_like(scaled_sobel_x)
-    # sy_binary = np.zeros_like(scaled_sobel_y)
-
-    # sx_binary = np.zeros_like(grad_x)
-    # sy_binary = np.zeros_like(grad_y)
-
-    # sx_binary[(scaled_sobel_x >= 30) & 
-    #         (scaled_sobel_x <= 255)] = 1
-    # sy_binary[(scaled_sobel_y >= 30) & 
-    #         (scaled_sobel_y <= 255)] = 1 
-    
-    # # for debug
-    # cv2.imshow('x', sx_binary)
-    # cv2.imshow('y', sy_binary)
-    
-    # return sx_binary, sy_binary
 
     vertical_filter = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
     horizontal_filter = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
 
     img = cv2.GaussianBlur(img, (5, 5), 0)
-    x_grad = scipy.ndimage.correlate(img, horizontal_filter)
-    y_grad = scipy.ndimage.correlate(img, vertical_filter)
+    # x_grad = scipy.ndimage.correlate(img, horizontal_filter)
+    # y_grad = scipy.ndimage.correlate(img, vertical_filter)
+    x_grad = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
+    y_grad = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
 
+    # cv2.imshow('x', x_grad)
+    # cv2.imshow('y', y_grad)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
     return x_grad, y_grad
 
 def color_tensor_element(Blue_x, Blue_y, Green_x, Green_y, Red_x, Red_y, x_dir, y_dir):
@@ -84,34 +68,47 @@ def color_tensor_element(Blue_x, Blue_y, Green_x, Green_y, Red_x, Red_y, x_dir, 
  
     return res
 
-def calc_vanishing_point(coordinates, local_orientation):
+def calc_vanishing_point(edge_coordinates, local_orientation):
     """
     Calculation for the vanishing point
     """
     global width, height, L
     
     vp_score_max = 0
+    vanishing_point_list = list()
+    delta_vp_list = list()
+    vanishing_point = None
     from tqdm import tqdm
-    for y_ind in tqdm(range(height)):
-        for x_ind in range(width):
-            vp_score_sum = 0
-            for i, j in coordinates:
-                l_vp = math.atan2(y_ind - j, x_ind - i) 
-                # l_vp_list.append(l_vp)
-                delta_vp = abs(local_orientation[y_ind, x_ind] -  l_vp)
-                # delta_vp_list.append(delta_vp)
+    # for y_ind in tqdm(range(height)):
+    #     for x_ind in range(width):
+    for y_ind, x_ind in tqdm(zip(range(height), range(width))):
+        vp_score_sum = 0
+        for i, j in edge_coordinates:
+            if y_ind >= j: 
+                continue
+            l_vp = math.atan2(y_ind - j, x_ind - i) 
+            delta_vp = abs(local_orientation[y_ind, x_ind] -  l_vp)
+            # delta_vp_list.append(math.degrees(delta_vp))
+            # if math.degrees(delta_vp) <= tau_o:
+            if delta_vp <= tau_o:
                 mu_vp = math.sqrt((y_ind - j)**2 + (x_ind - i)**2) / L
-                if delta_vp <= tau_p:
-                    vp_score = math.exp(-delta_vp * mu_vp)
-                else:
-                    vp_score = 0
-                vp_score_sum += vp_score
-            # vp_score_max = max(vp_score_sum, vp_score_max)
-            if vp_score_max < vp_score_sum:
-                vp_score_max = vp_score_sum
-                vanishing_point = (y_ind, x_ind)
+                vp_score = math.exp(-delta_vp * mu_vp)
             else:
-                vp_score_max = vp_score_max
+                vp_score = 0
+            vp_score_sum += vp_score
+        # vp_score_max = max(vp_score_sum, vp_score_max)
+        if vp_score_max < vp_score_sum:
+            vp_score_max = vp_score_sum
+            # vanishing_point = (y_ind, x_ind)
+            vanishing_point = (x_ind, y_ind)
+        else:
+            vp_score_max = vp_score_max
+            
+        print('---'*10)
+        print("Score: ", vp_score_max, " -> ", vanishing_point)
+        print('---'*10)
+        # vanishing_point_list.empty()
+        # delta_vp_list.empty()
     return vanishing_point
 
 
@@ -215,7 +212,7 @@ def calc_u_ij(vanishing_point, ray_i, ray_j):
     # cv2.fillPoly(img, pts, (0, 255, 0))
     # cv2.polylines(img, left_pts, isClosed=False, color=(255, 0, 0))
     # cv2.polylines(img, right_pts, isClosed=False, color=(255, 0, 0))
-    color_seg_img = cv2.imread("0_pred.png")
+    color_seg_img = cv2.imread("frame004429.jpg_pred.png")
     color_seg_img = cv2.resize(color_seg_img, (width, height), interpolation = cv2.INTER_AREA)
     color_seg_img_copy = copy.deepcopy(color_seg_img)
     mask = np.zeros(color_seg_img_copy.shape[:2], dtype="uint8")
@@ -254,7 +251,9 @@ def main():
     # print(len(data))
     # test_pic = cv2.imread("/home/bernard/Akrobotix/code/picture/0.png")
     # img = cv2.imread("/home/bernard/Akrobotix/code/0.png")
-    img = cv2.imread("0.png")
+    img = cv2.imread("frame002730.jpg.png")
+    # img = cv2.imread("frame002341.jpg.png")
+    # img = cv2.imread("0.png")
     scale_percent = 30  # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
@@ -276,20 +275,24 @@ def main():
     edge_strength = np.uint(255*abs(edge_strength)) / np.max(abs(edge_strength))
 
     edge_strength = np.uint8(edge_strength)
-    edges = cv2.Canny(edge_strength, 30, 200)
+    edges = cv2.Canny(edge_strength, 0, 200)
     # cv2.imshow('e_s', edge_strength)
     # cv2.imshow('edge', edges)
-    # cv2.waitKey(1)
+    # # cv2.imwrite('edge.png', edges)
+    # cv2.waitKey(0)
     # cv2.destroyAllWindows()
     indices = np.nonzero(edges)
     coordinates = list(zip(indices[1], indices[0]))
     
-    # vanishing_point = calc_vanishing_point(coordinates, local_orientation, width, height)
-    # print('---'*10)
-    # print(vanishing_point)
-    # print('---'*10)
-    vanishing_point = (152, 40)
+    vanishing_point = calc_vanishing_point(coordinates, local_orientation)
     image = cv2.circle(img, vanishing_point, radius=0, color=(0, 0, 255), thickness=10)
+    cv2.imshow('img', image)
+    # cv2.imwrite('vanishing_point.png', image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    print('---'*10)
+    print(vanishing_point)
+    print('---'*10)
     # image = cv2.line(img, (0, vanishing_point[1]), (width-1, vanishing_point[1]), color=(255, 0, 0), thickness=3)
     
     j = 0
@@ -336,7 +339,7 @@ def main():
     img = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (int(ray_list[ans[0]][0]), int(ray_list[ans[0]][1])), color=(0,255,0), thickness=1)
     img = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (int(ray_list[ans[1]][0]), int(ray_list[ans[1]][1])), color=(0,255,0), thickness=1)
     cv2.imshow('img', img)
-    # cv2.imwrite('vanishing_point.jpg', image)
+    cv2.imwrite('ray.jpg', img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     print("done")
