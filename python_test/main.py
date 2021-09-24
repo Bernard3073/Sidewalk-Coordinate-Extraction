@@ -81,7 +81,7 @@ def calc_vanishing_point(edge_coordinates, local_orientation):
     from tqdm import tqdm
     # for y_ind in tqdm(range(height)):
     #     for x_ind in range(width):
-    for y_ind, x_ind in tqdm(zip(range(height), range(width))):
+    for y_ind, x_ind in zip(range(height), range(width)):
         vp_score_sum = 0
         for i, j in edge_coordinates:
             if y_ind >= j: 
@@ -104,11 +104,9 @@ def calc_vanishing_point(edge_coordinates, local_orientation):
         else:
             vp_score_max = vp_score_max
             
-        print('---'*10)
-        print("Score: ", vp_score_max, " -> ", vanishing_point)
-        print('---'*10)
-        # vanishing_point_list.empty()
-        # delta_vp_list.empty()
+        # print('---'*10)
+        # print("Score: ", vp_score_max, " -> ", vanishing_point)
+        # print('---'*10)
     return vanishing_point
 
 
@@ -288,11 +286,11 @@ def main():
     image = cv2.circle(img, vanishing_point, radius=0, color=(0, 0, 255), thickness=10)
     cv2.imshow('img', image)
     # cv2.imwrite('vanishing_point.png', image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    print('---'*10)
-    print(vanishing_point)
-    print('---'*10)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    # print('---'*10)
+    # print(vanishing_point)
+    # print('---'*10)
     # image = cv2.line(img, (0, vanishing_point[1]), (width-1, vanishing_point[1]), color=(255, 0, 0), thickness=3)
     
     j = 0
@@ -334,16 +332,13 @@ def main():
         if score_dict[key][1] > val:
             val = score_dict[key][1]
             ans = (key, score_dict[key][0])
-    print(ans)
-    print("done")
+
     img = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (int(ray_list[ans[0]][0]), int(ray_list[ans[0]][1])), color=(0,255,0), thickness=1)
     img = cv2.line(img, (vanishing_point[0], vanishing_point[1]), (int(ray_list[ans[1]][0]), int(ray_list[ans[1]][1])), color=(0,255,0), thickness=1)
     cv2.imshow('img', img)
     cv2.imwrite('ray.jpg', img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    print("done")
-    # cv2.destroyAllWindows()
     
 if __name__ == '__main__':
     main()
