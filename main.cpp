@@ -1,24 +1,30 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
+#include <opencv2/imgproc.hpp>
 #include <iostream>
 #include <string>
 #include <math.h>
 
+int width;
+int height;
+float L;
+float tau_o = CV_PI/2;
 
 
 void sanityCheck(cv::Mat checkMatrix);
 
 void image_grad(cv::Mat img, cv::Mat &img_x, cv::Mat &img_y){
 
-  float sobelx_data[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
-  float sobely_data[9] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
-  cv::Mat sobelx = cv::Mat(3, 3, CV_32F, sobelx_data);
-  cv::Mat sobely = cv::Mat(3, 3, CV_32F, sobely_data);
+  // float sobelx_data[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+  // float sobely_data[9] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
+  // cv::Mat sobelx = cv::Mat(3, 3, CV_32F, sobelx_data);
+  // cv::Mat sobely = cv::Mat(3, 3, CV_32F, sobely_data);
 
   cv::GaussianBlur(img, img, cv::Size(5, 5), 0);
-  filter2D(img, img_x, -1, sobelx);
-  filter2D(img, img_y, -1, sobely);
-
+  // filter2D(img, img_x, -1, sobelx);
+  // filter2D(img, img_y, -1, sobely);
+  cv::Sobel(img, img_x, CV_64F, 1, 0, 5);
+  cv::Sobel(img, img_y, CV_64F, 0, 1, 5);
   // cv::imshow("r", img_x);
   // cv::waitKey(0);
   // cv::destroyAllWindows();
@@ -75,16 +81,56 @@ void sanityCheck(cv::Mat checkMatrix)
   }
 }
 
+
+void calc_vanishing_point(cv::Point &vanishing_point, std::vector<cv::Point> edge_coord, cv::Mat local_orientation){
+  float vp_score_max = 0.0, vp_score_sum = 0.0;
+  float l_vp, delta_vp, mu_vp, vp_score;
+  for(int y_ind = 0; y_ind < height; y_ind++){
+    for(int x_ind = 0; x_ind < width; x_ind++){
+      vp_score_sum = 0.0;
+      for(int edge = 0; edge < edge_coord.size(); edge++){
+        int i = edge_coord[edge].x; 
+        int j = edge_coord[edge].y; 
+        if(y_ind <= j) continue;
+        // l_vp = atan2(y_ind - j, x_ind - i);
+        float dot = i*x_ind + j*y_ind;
+        float det = i*y_ind - j*x_ind;
+        l_vp = atan2(det, dot);
+        delta_vp = abs(local_orientation.at<double>(y_ind, x_ind) - l_vp);
+        if(delta_vp <= tau_o){
+          mu_vp = sqrt(pow(y_ind - j, 2) + pow(x_ind - i, 2)) / L;
+          vp_score = exp(-delta_vp * mu_vp);
+        }
+        else vp_score = 0.0;
+        vp_score_sum += vp_score;
+      }
+      // if(vp_score_sum != 0) std::cout << vp_score_sum << '\n';
+      if(vp_score_max < vp_score_sum){
+        vp_score_max = vp_score_sum;
+        vanishing_point.x = x_ind;
+        vanishing_point.y = y_ind;
+        std::cout << vanishing_point.x << ", " << vanishing_point.y << '\n';
+      }
+      else vp_score_max = vp_score_max;
+    }
+    // if(vp_score_max != 0) std::cout << vp_score_max << '\n';
+  }
+}
+
 int main( int argc, char** argv ) {
   
   cv::Mat image;
-  image = cv::imread("0.png");
-  
+  image = cv::imread("frame002730.jpg.png");
+  int scale_percent = 30;
+  width = image.cols * scale_percent / 100;
+  height = image.rows * scale_percent / 100;
+  cv::resize(image, image, cv::Size(width, height), cv::INTER_AREA);
+  L = sqrt(width^2 + height^2);
+
   if(! image.data ) {
       std::cout <<  "Image not found or unable to open" << std::endl ;
       return -1;
   }
-  
   // cv::Mat three_channels[3];
   // cv::split(image, three_channels);
   cv::Mat three_channels[3]; 
@@ -111,9 +157,6 @@ int main( int argc, char** argv ) {
   image_grad(Green, Green_x, Green_y);
   image_grad(Red, Red_x, Red_y);
 
-  // sanityCheck(Blue);
-
-  // imshow("B", Blue_x);
   // cv::Mat G_xx = cv::Mat::zeros(cv::Size(Blue_x.rows, Blue_x.cols), CV_32F);
   // cv::Mat G_yy = cv::Mat::zeros(cv::Size(Blue_x.rows, Blue_x.cols), CV_32F);
   // cv::Mat G_xy = cv::Mat::zeros(cv::Size(Blue_x.rows, Blue_x.cols), CV_32F);
@@ -122,18 +165,12 @@ int main( int argc, char** argv ) {
   color_tensor(G_yy, Blue_x, Blue_y, Green_x, Green_y, Red_x, Red_y, false, true);
   color_tensor(G_xy, Blue_x, Blue_y, Green_x, Green_y, Red_x, Red_y, true, true);
 
-  // std::cout << "G_xx row: 0~2 = "<< std::endl << " "  << G_xx.rowRange(0, 2) << std::endl << std::endl;
-  // std::cout << "G_yy row: 0~2 = "<< std::endl << " "  << G_yy.rowRange(0, 2) << std::endl << std::endl;
-
   // For Debug
   // std::string ty =  type2str( G_xy.type() );
   // std::string ty2 =  type2str( xx_sub_yy.type() );
   
-  // local_orientation = 0.5*np.arctan2(2*G_xy, G_xx - G_yy) + (np.pi / 2)
-  // edge_strength = 0.5*(G_xx + G_yy + np.sqrt(np.square(G_xx - G_yy) + 4*np.square(G_xy)))
   cv::Mat tensor_angle; 
   cv::Mat xx_sub_yy;
-  // subtract(G_xx, G_yy, xx_sub_yy);
   xx_sub_yy = G_xx - G_yy;
   // phase(xx_sub_yy, 2*G_xy, tensor_angle);
   // add(0.5*tensor_angle, CV_PI / 2, local_orientation);
@@ -179,26 +216,31 @@ int main( int argc, char** argv ) {
   //   // std::cout << std::endl;
   // }
   edge_strength = 0.5*(G_xx + G_yy + sqrt_x_y);
-  // for(int r=0; r<5; r++){
-  //   for(int c=0; c<5; c++){
-  //     // std::cout << edge_strength.at<double>(r, c) << "|";
-  //     std::cout << xx_sub_yy.at<uchar>(r, c) << "|";
-      
-  //   }
-  //   std::cout << std::endl;
-  // }
-  // edge_strength = np.uint(255*abs(edge_strength)) / np.max(abs(edge_strength))
-  // img_binary = np.zeros_like(edge_strength)
   double minVal, maxVal;
   minMaxLoc(edge_strength, &minVal, &maxVal);
   cv::Mat res;
-  // normalize(edge_strength, res, minVal, maxVal, NORM_MINMAX);
   edge_strength = 255*edge_strength / maxVal;
-  // imshow("e", edge_strength);
-  edge_strength.convertTo(edge_strength, CV_8U);
+  edge_strength.convertTo(edge_strength, CV_8UC1);
   cv::Mat canny;
-  cv::Canny(edge_strength, canny, 30, 200);
-  imshow("c", canny);
+  cv::Canny(edge_strength, canny, 0, 200);
+  // cv::imshow("e", edge_strength);
+  // imshow("c", canny);
+  // cv::waitKey(0);
+  // cv::destroyAllWindows();
+  std::vector<std::vector<cv::Point> > contours;
+  std::vector<cv::Vec4i> hierarchy;
+
+  findContours(canny, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+  cv::Point vanishing_point(0, 0);
+  std::vector<cv::Point> edge_coord;
+  for(int i=0; i<contours.size(); i++){
+    for(int j=0; j<contours[i].size(); j++){
+      edge_coord.push_back(contours[i][j]);
+    }
+  }
+  calc_vanishing_point(vanishing_point, edge_coord, local_orientation);
+  cv::circle(image, vanishing_point, 0, cv::Scalar(0,0,255), 10);
+  cv::imshow("img", image);
   cv::waitKey(0);
   cv::destroyAllWindows();
   return 0;
