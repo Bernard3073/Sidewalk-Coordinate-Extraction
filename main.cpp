@@ -88,9 +88,9 @@ std::string type2str(int type) {
 void sanityCheck(cv::Mat checkMatrix)
 {
   std::cout << std::endl << "Matrix holds:" <<std::endl;
-  for (int r = 0; r < checkMatrix.rows; r++)
+  for (int r = 0; r < 5; r++)
   {
-    for (int c = 0; c < checkMatrix.cols; c++)
+    for (int c = 0; c < 5; c++)
     {
       // unsigned char is an unsigned byte value(0-255)
       std::cout << checkMatrix.at<float>(r, c) << " | ";
@@ -135,87 +135,58 @@ void calc_vanishing_point(cv::Point &vanishing_point, std::vector<cv::Point> edg
   }
 }
 
-float calc_u_ij(cv::Mat image, cv::Mat color_seg_img, cv::Point &vanishing_point, cv::Point &ray_i, cv::Point &ray_j){
+
+float sign (cv::Point p1, cv::Point p2, cv::Point p3)
+{
+    return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+}
+
+bool PointInTriangle (cv::Point pt, cv::Point v1, cv::Point v2, cv::Point v3)
+{
+    float d1, d2, d3;
+    bool has_neg, has_pos;
+
+    d1 = sign(pt, v1, v2);
+    d2 = sign(pt, v2, v3);
+    d3 = sign(pt, v3, v1);
+
+    has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+    return !(has_neg && has_pos);
+}
+
+void calc_u_ij(float &uniformity, cv::Mat image, cv::Mat color_seg_img, cv::Point vanishing_point, cv::Point ray_i, cv::Point ray_j){
   // Calculate color uniformity between ray "i" and ray "j"
   std::vector<cv::Point> left_pts, right_pts;
-  // // cv::Mat left_mask(color_seg_img.size(), uchar(0));
-  // cv::Mat right_mask(color_seg_img.size(), uchar(0));
-  // cv::clipLine(color_seg_img.size(), vanishing_point, ray_i);
-  // // cv::clipLine(color_seg_img.size(), vanishing_point, ray_j);
-  // // cv::line(left_mask, vanishing_point, ray_i,  cv::Scalar(255));
-  // cv::line(right_mask, vanishing_point, ray_j, cv::Scalar(255));
-  // // cv::findNonZero(left_mask, left_pts);
-  // cv::findNonZero(right_mask, right_pts);
-
-  // cv::LineIterator it_left(image, vanishing_point, ray_i, 8);
-  // cv::LineIterator it_right(image, vanishing_point, ray_j, 8);
-  // for(int i=0; i<it_left.count; i++, ++it_left){
-  //   cv::Point pt = it_left.pos();
-  //   left_pts.push_back(pt);
-  // }
-  // for(int i=0; i<it_right.count; i++, ++it_right){
-  //   cv::Point pt = it_right.pos();
-  //   right_pts.push_back(pt);
-  // }
-
   std::vector<cv::Point> ray_area_pts;
-  // cv::Rect left_rect = cv::boundingRect(left_pts);
-  // cv::Rect right_rect = cv::boundingRect(right_pts);
-  // cv::Point ray_area_x_min = left_rect.tl();
-  // cv::Point ray_area_x_max = left_rect.br() - cv::Point(1, 1);
-  // cv::line(image, left_rect.tl(), left_rect.br() - cv::Point(1, 1), cv::Scalar(0,255,0), 1);
-  // cv::imshow("img", image);
-  // cv::waitKey(0);
-  // cv::destroyAllWindows();
-
-  double m1 = double(ray_i.y - vanishing_point.y) / double( ray_i.x - vanishing_point.x);
-  double m2 = double(ray_j.y - vanishing_point.y) / double(ray_j.x - vanishing_point.x);
-  double m_min = std::min(m1, m2);
-  double m_max = std::max(m1, m2);
-  for(int y=vanishing_point.y; y<height; y++){
+  
+  float m1 = float(ray_i.y - vanishing_point.y) / float( ray_i.x - vanishing_point.x);
+  float m2 = float(ray_j.y - vanishing_point.y) / float(ray_j.x - vanishing_point.x);
+  float m_min = std::min(m1, m2);
+  float m_max = std::max(m1, m2);
+  for(int y=vanishing_point.y+1; y<height; y++){
     for(int x=0; x<width; x++){
       cv::Point cur_pt(x, y);
-      double m;
-      if(cur_pt.x != vanishing_point.x) m = (cur_pt.y - vanishing_point.y) / ( cur_pt.x - vanishing_point.x);
-      else m = 0;
-      if(m >= m_min && m <= m_max) ray_area_pts.push_back(cur_pt);
+      // float m;
+      // if(cur_pt.x != vanishing_point.x) m = (cur_pt.y - vanishing_point.y) / ( cur_pt.x - vanishing_point.x);
+      // else m = 0;
+      // m = float(cur_pt.y - vanishing_point.y) / float( cur_pt.x - vanishing_point.x);
+      // if(m >= m_min && m <= m_max) ray_area_pts.push_back(cur_pt);
+      if(PointInTriangle(cur_pt, vanishing_point, ray_i, ray_j) == true) ray_area_pts.push_back(cur_pt);
     }
   }
-  // std::vector<cv::Point> ray_area_pts;
-  // for(int i=0; i<left_pts.size(); i++){
-  //   ray_area_pts.push_back(left_pts[i]);
-  //   ray_area_pts.push_back(right_pts[i]);
-  // }
+  // std::cout << ray_area_pts.size() << '\n';
   cv::Mat ray_area_mask = cv::Mat::zeros(color_seg_img.size(), CV_8UC1);
   cv::fillPoly(ray_area_mask, ray_area_pts, cv::Scalar(255));
   cv::Mat color_seg_img_copy = cv::Mat::zeros(image.size(), image.type());
-  // std::string ty =  type2str(test.type() );
-  // std::string ty1 =  type2str( image.type() );
-  // std::string ty2 =  type2str( ray_area_mask.type() );
   
   cv::bitwise_and(color_seg_img, color_seg_img, color_seg_img_copy, ray_area_mask);
-  // image.copyTo(test, ray_area_mask);
   // cv::imshow("img", color_seg_img_copy);
-  // cv::imshow("img1", ray_area_mask);
   // cv::waitKey(0);
   // cv::destroyAllWindows();
-  
   cv::Mat three_channels[3]; 
-  cv::split(color_seg_img, three_channels);
-  // cv::Mat Blue = cv::Mat::zeros(cv::Size(color_seg_img.cols+1, color_seg_img.rows+1), CV_32F);
-  // cv::Mat Green = cv::Mat::zeros(cv::Size(color_seg_img.cols+1, color_seg_img.rows+1), CV_32F);
-  // cv::Mat Red = cv::Mat::zeros(cv::Size(color_seg_img.cols+1, color_seg_img.rows+1), CV_32F);
-  // for (int r = 0; r < color_seg_img.rows; r++)
-  // {
-  //   for (int c = 0; c < color_seg_img.cols; c++)
-  //   {
-  //     Blue.at<float>(r, c) = three_channels[0].at<uchar>(r, c);
-  //     Green.at<float>(r, c) = three_channels[1].at<uchar>(r, c);
-  //     Red.at<float>(r, c) = three_channels[2].at<uchar>(r, c);
-  //   }
-  // }
-  // three_channels[0].convertTo(three_channels[0], CV_8UC3);
-  // sanityCheck(three_channels[0]);
+  cv::split(color_seg_img_copy, three_channels);
   int histSize = 16;
 
   float range[] = { 0, 256 } ;
@@ -243,14 +214,22 @@ float calc_u_ij(cv::Mat image, cv::Mat color_seg_img, cv::Point &vanishing_point
   cv::pow(g_hist/g_hist_sum[0], 2, g_hist_square);
   cv::pow(r_hist/r_hist_sum[0], 2, r_hist_square);
   u = cv::sum(b_hist_square) + cv::sum(g_hist_square) + cv::sum(r_hist_square);
-  std::cout << u << '\n';
+  // std::cout << u[0] << '\n';
+  // std::cout << "( " << ray_i << ", " << ray_j << " )" << '\n';
 
-  return u[0];
+  uniformity = u[0];
 }
 
-// float lane_score(std::vector<double> d_o_list, std::vector<float> d_c_list, float uniformity, std::vector<int> phi_list){
-
-// }
+void lane_score(float &score, int i, int j, std::vector<float> d_o_list, std::vector<float> d_c_list, float uniformity, std::vector<float> phi_list){
+  float angle = abs(phi_list[i] - phi_list[j]);
+  float f1_i = exp(-d_o_list[i]/CV_PI);
+  float f1_j = exp(-d_o_list[j]/CV_PI);
+  float f2_i = 1/(1 + a*exp(-b*d_c_list[i]));
+  float f2_j = 1/(1 + a*exp(-b*d_c_list[j]));
+  float f3 = 1/(1 + alpha * exp(-beta*uniformity));
+  float f4 = 1/(sigma * sqrt(2*CV_PI)) * exp(-pow(angle-phi_avg, 2)/(2.0*pow(sigma, 2)));
+  score = f1_i*f1_j*f2_i*f2_j*f3*f4;
+}
 
 
 int main( int argc, char** argv ) {
@@ -305,7 +284,14 @@ int main( int argc, char** argv ) {
   G_xy.convertTo(G_xy, CV_32F);
 
   cv::Mat local_orientation;
-  phase(G_xx - G_yy, 2*G_xy, local_orientation);
+  cv::phase(G_xx - G_yy, 2*G_xy, local_orientation);
+  // float pi = 3.14159265358979;
+  cv::subtract(local_orientation, 2*CV_PI, local_orientation, (local_orientation > CV_PI));
+  local_orientation = 0.5*local_orientation + CV_PI/2;
+  // sanityCheck(local_orientation);
+  double minV, maxV;
+  cv::minMaxLoc(local_orientation, &minV, &maxV);
+
   cv::Mat xx_yy_square, xy_square;
   pow(G_xx - G_yy, 2.0, xx_yy_square);
   pow(G_xy, 2.0, xy_square);
@@ -315,7 +301,7 @@ int main( int argc, char** argv ) {
   cv::Mat edge_strength;
   edge_strength = 0.5*(G_xx + G_yy + sqrt_x_y);
   double minVal, maxVal;
-  minMaxLoc(edge_strength, &minVal, &maxVal);
+  cv::minMaxLoc(edge_strength, &minVal, &maxVal);
   cv::Mat res;
   edge_strength = 255*edge_strength / maxVal;
   edge_strength.convertTo(edge_strength, CV_8UC1);
@@ -344,18 +330,18 @@ int main( int argc, char** argv ) {
 
 
   // list of ray angle
-  std::vector<int> phi_list;
+  std::vector<float> phi_list;
   // list of the end point of each ray
   std::vector<cv::Point> ray_coord_list;
   // store the rays' end points in a dynamic array
   for(int i=200; i<341; i+=5){
     phi_list.push_back(i*CV_PI/180);
     cv::Point ray_end_point;
-    ray_end_point.x = int(vanishing_point.x + 200*cos(i*CV_PI/180));
-    ray_end_point.y = int(vanishing_point.y - 200*sin(i*CV_PI/180));
-    if(ray_end_point.x < 0) ray_end_point.x = 0;
-    else if(ray_end_point.x > width) ray_end_point.x = width;
-    else if(ray_end_point.y > height) ray_end_point.y = height;
+    ray_end_point.x = int(vanishing_point.x + 150*cos(i*CV_PI/180));
+    ray_end_point.y = int(vanishing_point.y - 150*sin(i*CV_PI/180));
+    // if(ray_end_point.x < 0) ray_end_point.x = 0;
+    // else if(ray_end_point.x > width) ray_end_point.x = width;
+    // if(ray_end_point.y > height) ray_end_point.y = height;
     ray_coord_list.push_back(ray_end_point);
     // cv::line(image, vanishing_point, ray_end_point, cv::Scalar(0,255,0), 1);
   }
@@ -366,9 +352,9 @@ int main( int argc, char** argv ) {
   std::vector<std::pair<std::vector<cv::Point>, std::vector<cv::Point>>>R_list;
   // list of neighbor pixels of each ray
   std::vector<std::vector<cv::Point>> N_R_list;
-  double ray_angle = theta_r;
   cv::Point vector_1, vector_2;
-  double angle;
+  float angle;
+  float ray_angle = theta_r;
   // calculate orientation difference
   for(int i=0; i<ray_coord_list.size(); i++){
     std::vector<cv::Point> R_plus;
@@ -397,9 +383,10 @@ int main( int argc, char** argv ) {
     R_list.push_back(std::make_pair(R_plus, R_minus));
     N_R_list.push_back(N_r);
   }
-  double d_o;
-  std::vector<double> d_o_list;
+  float d_o;
+  std::vector<float> d_o_list;
   cv::Point cur;
+  ray_angle = theta_r;
   for(int i=0; i<N_R_list.size(); i++){
     d_o = 0.0;
     for(int j=0; j<N_R_list[i].size(); j++){
@@ -446,12 +433,34 @@ int main( int argc, char** argv ) {
     d_c = d_c / std::max(pow(c_plus[0], 2) + pow(c_plus[1], 2) + pow(c_plus[2], 2), pow(c_minus[0], 2) + pow(c_minus[1], 2) + pow(c_minus[2], 2));
     d_c_list.push_back(d_c);
   }
+  std::unordered_map<int, std::pair<int, float>> score_hash; 
+  float uniformity;
+  float score;
   for(int i=0; i<ray_coord_list.size()-1; i++){
+    score_hash[i] = std::make_pair(0, 0.0);
     for(int j = i+1; j<ray_coord_list.size(); j++){
-        float uniformity = calc_u_ij(image, color_seg_img, vanishing_point, ray_coord_list[i], ray_coord_list[j]);
-
+        calc_u_ij(uniformity, image, color_seg_img, vanishing_point, ray_coord_list[i], ray_coord_list[j]);
+        lane_score(score, i, j, d_o_list, d_c_list, uniformity, phi_list);
+        // std::cout << score << '\n';
+        if(score > score_hash[i].second){
+            score_hash[i] = std::make_pair(j, score);
+        }
     }
   }
+  float val = 0.0;
+  std::pair<int, int> sidewalk_area;
+  for(auto x: score_hash){
+    if(x.second.second > val){
+      val = x.second.second;
+      sidewalk_area.first = x.first;
+      sidewalk_area.second = x.second.first;
+    }
+  }
+  cv::line(image, vanishing_point, ray_coord_list[sidewalk_area.first], cv::Scalar(0,255,0), 1);
+  cv::line(image, vanishing_point, ray_coord_list[sidewalk_area.second], cv::Scalar(0,255,0), 1);
+  cv::imshow("img", image);
+  cv::waitKey(0);
+  cv::destroyAllWindows();
   std::cout << "Done" << '\n';
   return 0;
 }
